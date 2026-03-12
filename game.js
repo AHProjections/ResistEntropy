@@ -1,0 +1,113 @@
+/* ============================================================
+   RESIST — Game Architecture & App Conversion Guide
+
+   KEY CLASSES:
+   - GameEngine: core loop, input handling, canvas management
+   - LevelManager: reads LevelConfig objects, assembles and runs each level
+   - NarratorSystem: manages narrator text, typing animation, event triggers
+   - UILayer: draws HUD elements on a second canvas layer above the game canvas
+   - ProgressStore: in-memory object (swap for localStorage or fs for persistence)
+   - EntitySystem: manages organisms, nutrients, hazards, particle systems
+
+   TO CONVERT TO REACT NATIVE:
+   - GameEngine.render() loop → Expo GL or react-native-canvas
+   - LevelConfig array → separate levels.js data module
+   - NarratorSystem → React component with typed-text animation
+   - UILayer → React Native View/Animated components
+   - ProgressStore → AsyncStorage or MMKV
+
+   TO CONVERT TO ELECTRON DESKTOP APP:
+   - Drop HTML file directly into an Electron BrowserWindow
+   - No changes needed for basic functionality
+   - Swap ProgressStore's in-memory object for electron's fs module
+     writing JSON to app.getPath('userData')
+
+   TO ADD A NEW LEVEL:
+   1. Create a new LevelConfig object following the schema
+   2. Add pixel sprite drawing function to SpriteLibrary
+   3. Add any new mechanic handlers to MechanicRegistry
+   4. Push config to LEVELS array — engine handles the rest
+   ============================================================ */
+
+const $=s=>document.querySelector(s);
+const show=id=>document.querySelectorAll('.screen').forEach(sc=>sc.classList.toggle('active',sc.id===id));
+const zoomTransition=cb=>{const z=$('#zoomOverlay');z.style.opacity='1';setTimeout(()=>{cb();z.style.opacity='0'},220)};
+
+const INTRO_PARAGRAPHS=[
+`Every living thing that has ever existed — from the first fragile bubble of chemistry to the mind reading these words — has been doing one thing: resisting the universe’s tendency toward disorder.`,
+`Life persists through prediction and correction: systems continuously reduce the gap between what they expect and what they find.`,
+`Across mammalian evolution, seven ancient emotional systems organize this struggle — Seeking, Fear, Rage, Lust, Care, Grief, Play.`,
+`In this game, you will live that arc: membrane, movement, coordination, feeling.`
+];
+
+const GRAND_SCHEME=[
+{id:1,name:'Protocell',era:'~3.8bya',drive:null,concept:'The Markov Blanket: You exist by maintaining a boundary',status:'playable'},
+{id:2,name:'Bacterium',era:'~3.5bya',drive:null,concept:'Active Inference: Every movement is a prediction',status:'playable'},
+{id:3,name:'Multicellular',era:'~600mya',drive:null,concept:'Nested Blankets: Complexity is coordination',status:'playable'},
+{id:4,name:'Flatworm',era:'~500mya',drive:null,concept:'Affect: The first feeling of prediction error',status:'playable'},
+{id:5,name:'Fish',era:'~400mya',drive:'SEEKING + FEAR',concept:'The first drives',status:'coming_soon'},
+{id:6,name:'Reptile',era:'~300mya',drive:'RAGE',concept:'Blocked homeostasis becomes aggression',status:'coming_soon'},
+{id:7,name:'Early Mammal',era:'~200mya',drive:'LUST + CARE + PANIC',concept:'Social bond as homeostasis',status:'coming_soon'},
+{id:8,name:'Social Mammal',era:'~50mya',drive:'PLAY',concept:'Low-stakes model building',status:'coming_soon'},
+{id:9,name:'Early Hominid',era:'~2mya',drive:'Cortical prediction',concept:'Future simulation and dread',status:'coming_soon'},
+{id:10,name:'Homo Sapiens',era:'~100,000ya',drive:'Culture & symbol',concept:'Civilizational entropy resistance',status:'coming_soon'}
+];
+
+const LEVELS=[
+{id:1,name:'The Protocell',era:'~3.8 billion years ago',organism:'protocell',objectiveText:'Survive 60 seconds by maintaining Order.',controlsText:'Move: WASD / Arrows / touch drag · Membrane Pulse: Space',winCondition:{type:'survive',duration:60},ui:{roster:false,brainstem:false,valence:false},theme:{bg:'#090910',nutrient:'#f0e8d8',hazard:'#e76f5a',particle:'rgba(255,255,255,.08)'},tuning:{speed:92,metEnergy:4,metOrder:2.3,hazard:4,pull:0},narratorIntro:'Before thought, there was membrane.',narratorMoments:{nearDeath:'The boundary is failing.'},coreConceptFull:{concept:'Markov Blanket',explanation:'A system persists by maintaining a boundary between inside and outside.',keyInsight:'To exist is to maintain a boundary.'},philosophicalBridge:'You held the boundary.',mechanics:['spawnBasic','metabolism','move','collect','hazardHits','membranePulse']},
+{id:2,name:'The Bacterium',era:'~3.5 billion years ago',organism:'bacterium',objectiveText:'Collect 20 nutrients before depletion.',controlsText:'Move: WASD / Arrows · Boost: Shift · Scan Ping: E',winCondition:{type:'collect',count:20},ui:{roster:false,brainstem:false,valence:false},theme:{bg:'#090b12',nutrient:'#dff8ec',hazard:'#e76f5a',particle:'rgba(255,255,255,.085)'},tuning:{speed:108,metEnergy:4.3,metOrder:2.5,hazard:4,pull:16},narratorIntro:'Direction enters life.',narratorMoments:{newMechanicUsed:'Prediction confirmed.'},coreConceptFull:{concept:'Active Inference',explanation:'Movement samples expected futures and updates behavior.',keyInsight:'Every movement is a hypothesis.'},philosophicalBridge:'The boundary now tests the world.',mechanics:['spawnBasic','spawnGradients','metabolism','move','collect','gradientField','hazardHits','scanPing']},
+{id:3,name:'Early Multicellular Life',era:'~600 million years ago',organism:'cluster',objectiveText:'Grow from 4 to 8 cells.',controlsText:'Move: WASD / Arrows · Rotate roles: click cell buttons · Bud new cell: Q',winCondition:{type:'grow',cells:8},ui:{roster:true,brainstem:false,valence:false},theme:{bg:'#081018',nutrient:'#e8f2ee',hazard:'#dc786a',particle:'rgba(195,230,250,.09)'},tuning:{speed:94,metEnergy:4.5,metOrder:2.6,hazard:2,pull:16},narratorIntro:'Many become one.',narratorMoments:{nearDeath:'A part is gone; the whole persists.'},coreConceptFull:{concept:'Nested Blankets',explanation:'Specialized cells coordinate into shared homeostasis.',keyInsight:'Complexity is coordination.'},philosophicalBridge:'You became a hierarchy.',mechanics:['spawnBasic','metabolism','move','collect','hazardHits','multicellRoles','cellBudding']},
+{id:4,name:'The Flatworm',era:'~500 million years ago',organism:'flatworm',objectiveText:'Survive 90s and keep Valence positive for 60s.',controlsText:'Move: WASD / Arrows · Toggle Approach/Avoid bias: F',winCondition:{type:'valence',duration:90,positive:60},ui:{roster:false,brainstem:true,valence:true},theme:{bg:'#0d1018',nutrient:'#f0e5c8',hazard:'#e67b61',particle:'rgba(255,255,255,.09)'},tuning:{speed:98,metEnergy:6.1,metOrder:2.8,hazard:4,pull:16},narratorIntro:'Uncertainty is now felt.',narratorMoments:{newMechanicUsed:'There. The first feeling.'},coreConceptFull:{concept:'Conscious Affect',explanation:'When automatic regulation fails, affect mobilizes action.',keyInsight:'Feeling is a homeostatic alarm.'},philosophicalBridge:'Vulnerability became feeling.',mechanics:['spawnBasic','spawnPainZones','metabolism','move','collect','hazardHits','painAffect','valenceDrift','approachAvoidBias']},
+{id:5,name:'Fish',era:'~400mya',status:'coming_soon'},{id:6,name:'Reptile',era:'~300mya',status:'coming_soon'},{id:7,name:'Early Mammal',era:'~200mya',status:'coming_soon'},{id:8,name:'Social Mammal',era:'~50mya',status:'coming_soon'},{id:9,name:'Early Hominid',era:'~2mya',status:'coming_soon'},{id:10,name:'Homo Sapiens',era:'~100,000ya',status:'coming_soon'}
+];
+
+class ProgressStore{constructor(){this.k='resist-progress-v3';this.currentLevel=1;this.completed=[];this.load()}load(){try{const j=JSON.parse(localStorage.getItem(this.k)||'{}');this.currentLevel=j.currentLevel||1;this.completed=j.completed||[]}catch(_){}}save(){try{localStorage.setItem(this.k,JSON.stringify({currentLevel:this.currentLevel,completed:this.completed}))}catch(_){}}}
+class NarratorSystem{constructor(el){this.el=el;this.i=0}speak(t,s=16){clearInterval(this.i);this.el.textContent='';let c=0;this.i=setInterval(()=>{this.el.textContent=t.slice(0,++c);if(c>=t.length)clearInterval(this.i)},s)}}
+class UILayer{setBars(items){const b=$('#bars');b.innerHTML='';items.forEach(i=>{const d=document.createElement('div');d.innerHTML=`<div style='font-size:11px;margin-bottom:2px'>${i.label}</div><div class='bar-wrap'><div class='bar' style='width:${Math.max(0,Math.min(100,i.v))}%;background:${i.c}'></div></div>`;b.appendChild(d)})}}
+class LevelManager{constructor(e){this.e=e}load(id){this.e.setup(LEVELS[id-1])}}
+const SpriteLibrary={protocell:(c,p)=>{c.fillStyle='#ece6d8';for(let y=-6;y<6;y++)for(let x=-6;x<6;x++)if(x*x+y*y<36)c.fillRect(p.x+x,p.y+y,1,1)},bacterium:(c,p,t)=>{c.fillStyle='#d4efe4';for(let y=-5;y<=5;y++)for(let x=-9;x<=9;x++)if((x*x)/81+(y*y)/25<1)c.fillRect(p.x+x,p.y+y,1,1);c.fillStyle='#bfd7cf';c.fillRect(p.x+10,p.y+Math.sin(t*20)*2,6,1)},cluster:(c,p,s)=>{const colors={sensor:'#9bcad4',mover:'#9be3b2',defender:'#d4a39b'};s.cells.forEach((r,i)=>{const a=(Math.PI*2/s.cells.length)*i;c.fillStyle=colors[r];c.fillRect(p.x+Math.cos(a)*14-3,p.y+Math.sin(a)*14-3,6,6)});c.fillStyle='#d9e8df';c.fillRect(p.x-4,p.y-4,8,8)},flatworm:(c,p,t)=>{c.fillStyle='#d8c9a7';for(let i=0;i<10;i++)c.fillRect(p.x-14+i*3,p.y+Math.sin(t*10+i*.7)*2,2,7)}};
+
+const MechanicRegistry={
+spawnBasic:(g,dt)=>{if(Math.random()<dt*1.8)g.entities.nutrients.push({x:Math.random()*g.w,y:Math.random()*g.h,r:4});if(Math.random()<dt*.9)g.entities.hazards.push({x:Math.random()*g.w,y:Math.random()*g.h,r:3+Math.random()*3,vx:(Math.random()-.5)*24,vy:(Math.random()-.5)*24})},
+spawnGradients:(g)=>{if(g.once.gradients)return;for(let i=0;i<5;i++)g.entities.gradients.push({x:Math.random()*g.w,y:Math.random()*g.h,r:95+Math.random()*90,type:i<3?'nutrient':'toxin'});g.once.gradients=true},
+spawnPainZones:(g)=>{if(g.once.pain)return;for(let i=0;i<6;i++)g.entities.pain.push({x:Math.random()*g.w,y:Math.random()*g.h,r:30+Math.random()*24});g.once.pain=true},
+metabolism:(g,dt)=>{g.state.energy-=g.level.tuning.metEnergy*dt;g.state.order-=g.level.tuning.metOrder*dt;g.clamp()},
+move:(g,dt)=>{let dx=0,dy=0,k=g.input.keys;if(k['arrowup']||k.w)dy--;if(k['arrowdown']||k.s)dy++;if(k['arrowleft']||k.a)dx--;if(k['arrowright']||k.d)dx++;if(g.input.touch){dx=g.input.tx-g.player.x;dy=g.input.ty-g.player.y}const m=Math.hypot(dx,dy)||1;let speed=g.level.tuning.speed;if(k['shift'])speed*=1.35;g.player.x+=(dx/m)*speed*dt;g.player.y+=(dy/m)*speed*dt;g.player.x=Math.max(8,Math.min(g.w-8,g.player.x));g.player.y=Math.max(8,Math.min(g.h-8,g.player.y))},
+collect:(g)=>{g.entities.nutrients=g.entities.nutrients.filter(n=>{const d=Math.hypot(n.x-g.player.x,n.y-g.player.y);if(d<10+g.level.tuning.pull*.016){g.state.energy=Math.min(100,g.state.energy+8);g.state.order=Math.min(100,g.state.order+5);g.state.valence=Math.min(100,g.state.valence+6);g.state.collected++;return false}return true})},
+hazardHits:(g,dt)=>{g.entities.hazards.forEach(h=>{h.x+=(h.vx||0)*dt;h.y+=(h.vy||0)*dt;if(Math.hypot(h.x-g.player.x,h.y-g.player.y)<h.r+g.player.r){const mult=g.state.shield?0.35:1;g.state.order-=g.level.tuning.hazard*mult;g.state.energy-=g.level.tuning.hazard*.8*mult;g.state.valence-=g.level.tuning.hazard*1.1*mult}})},
+gradientField:(g,dt)=>{g.entities.gradients.forEach(z=>{if(Math.hypot(z.x-g.player.x,z.y-g.player.y)<z.r){if(z.type==='nutrient'){g.state.energy+=15*dt;g.state.order+=8*dt}else{g.state.order-=18*dt;g.state.energy-=10*dt;g.state.surprise=.25}}})},
+scanPing:(g,dt)=>{g.state.scan=Math.max(0,g.state.scan-dt);if(g.input.keys['e'])g.state.scan=.8},
+multicellRoles:(g,dt)=>{const defenders=g.state.cells.filter(c=>c==='defender').length;g.state.order+=defenders*.8*dt},
+cellBudding:(g)=>{if(g.input.keys['q']&&g.state.cells.length<8&&g.state.energy>30&&!g.flags.bud){g.flags.bud=1;g.state.cells.push('sensor');g.state.energy-=20;g.renderRoster()}if(!g.input.keys['q'])g.flags.bud=0},
+membranePulse:(g,dt)=>{g.state.shield=!!g.input.keys[' '];if(g.state.shield)g.state.energy-=6*dt},
+painAffect:(g,dt)=>{g.entities.pain.forEach(p=>{if(Math.hypot(p.x-g.player.x,p.y-g.player.y)<p.r+g.player.r){g.state.order-=6*dt;g.state.valence-=12*dt;g.player.x-=(p.x-g.player.x)*.04;g.player.y-=(p.y-g.player.y)*.04;const glow=$('#brainstemGlow');glow.style.opacity='.9';setTimeout(()=>glow.style.opacity='.1',120)}})},
+valenceDrift:(g,dt)=>{g.state.valence+=((g.state.energy>50&&g.state.order>50)?8:-8)*dt;if(g.state.valence>50)g.state.positiveTime+=dt;g.clamp()},
+approachAvoidBias:(g,dt)=>{if(g.input.keys['f']&&!g.flags.biasToggle){g.flags.biasToggle=1;g.state.avoid=!g.state.avoid;$('#controlsBox').innerHTML=`<strong>Controls</strong><br>${g.level.controlsText}<br><br>Mode: <strong>${g.state.avoid?'Avoid':'Approach'}</strong><br><em>Secret:</em> Ctrl + > advances level`}if(!g.input.keys['f'])g.flags.biasToggle=0;if(!g.state.avoid)return;let ax=0,ay=0;g.entities.hazards.forEach(h=>{const dx=g.player.x-h.x,dy=g.player.y-h.y,d=Math.hypot(dx,dy)||1;if(d<120){ax+=dx/d;ay+=dy/d}});g.player.x+=ax*50*dt;g.player.y+=ay*50*dt}
+};
+
+class GameEngine{constructor(canvas){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.progress=new ProgressStore();this.levelManager=new LevelManager(this);this.narrator=new NarratorSystem($('#narrator'));this.ui=new UILayer();this.input={keys:{},touch:false,tx:0,ty:0};this.resize();addEventListener('resize',()=>this.resize());this.bindInput()}
+bindInput(){addEventListener('keydown',e=>{this.input.keys[e.key.toLowerCase()]=1;if(e.ctrlKey&&(e.key==='>'||(e.key==='.'&&e.shiftKey))&&this.running){e.preventDefault();this.skipToNextLevel()}});addEventListener('keyup',e=>this.input.keys[e.key.toLowerCase()]=0);this.canvas.addEventListener('touchstart',e=>this.touch(e),{passive:false});this.canvas.addEventListener('touchmove',e=>this.touch(e),{passive:false});this.canvas.addEventListener('touchend',()=>this.input.touch=false)}
+skipToNextLevel(){const n=Math.min(4,(this.level?.id||1)+1);if(this.running&&this.level&&n!==this.level.id){this.running=false;zoomTransition(()=>{show('gameScreen');this.start(n)})}}
+touch(e){e.preventDefault();const t=e.touches[0];if(!t)return;const r=this.canvas.getBoundingClientRect();this.input.touch=true;this.input.tx=t.clientX-r.left;this.input.ty=t.clientY-r.top}
+resize(){this.canvas.width=innerWidth*devicePixelRatio;this.canvas.height=innerHeight*devicePixelRatio;this.ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);this.w=innerWidth;this.h=innerHeight}
+setup(level){this.level=level;this.entities={nutrients:[],hazards:[],gradients:[],pain:[],particles:[]};this.once={};this.flags={};this.state={t:0,order:100,energy:100,valence:50,collected:0,positiveTime:0,surprise:0,cells:['sensor','mover','defender','sensor'],shield:false,scan:0,avoid:false};this.player={x:this.w/2,y:this.h/2,r:9};for(let i=0;i<100;i++)this.entities.particles.push({x:Math.random()*this.w,y:Math.random()*this.h,v:.2+Math.random()});$('#levelLabel').textContent=`${level.name} · ${level.era}`;$('#objectiveBox').style.display='block';$('#controlsBox').style.display='block';$('#objectiveBox').innerHTML=`<strong>Objective</strong><br>${level.objectiveText}`;$('#controlsBox').innerHTML=`<strong>Controls</strong><br>${level.controlsText}<br><br><em>Secret:</em> Ctrl + > advances level`;$('#roster').style.display=level.ui.roster?'block':'none';$('#brainstem').style.display=level.ui.brainstem?'block':'none';this.renderRoster();this.narrator.speak(level.narratorIntro,16)}
+renderRoster(){const r=$('#roster');if(!this.level.ui.roster){r.innerHTML='';return}r.innerHTML='<strong>Cell Roles</strong><br/>';this.state.cells.forEach((role,i)=>{const b=document.createElement('button');b.className='cell-btn';b.textContent=`Cell ${i+1}: ${role}`;b.onclick=()=>{const roles=['sensor','mover','defender'];this.state.cells[i]=roles[(roles.indexOf(this.state.cells[i])+1)%3];this.renderRoster()};r.appendChild(b)})}
+clamp(){this.state.order=Math.max(0,Math.min(100,this.state.order));this.state.energy=Math.max(0,Math.min(100,this.state.energy));this.state.valence=Math.max(0,Math.min(100,this.state.valence))}
+checkWin(){const w=this.level.winCondition;if(w.type==='survive'&&this.state.t>=w.duration)return true;if(w.type==='collect'&&this.state.collected>=w.count)return true;if(w.type==='grow'&&this.state.cells.length>=w.cells)return true;if(w.type==='valence'&&this.state.t>=w.duration&&this.state.positiveTime>=w.positive)return true;return false}
+update(dt){this.state.t+=dt;for(const m of this.level.mechanics)MechanicRegistry[m]?.(this,dt);if((this.state.order<30||this.state.energy<25)&&!this.flags.near&&this.level.narratorMoments?.nearDeath){this.flags.near=1;this.narrator.speak(this.level.narratorMoments.nearDeath)}if(this.checkWin())return this.complete();if(this.state.order<=0||this.state.energy<=0){this.narrator.speak('Entropy won this round. Try again.');this.setup(this.level)}}
+draw(){const c=this.ctx;c.fillStyle=this.level.theme.bg;c.fillRect(0,0,this.w,this.h);if(this.state.surprise>0){c.fillStyle=`rgba(230,90,80,${this.state.surprise})`;c.fillRect(0,0,this.w,this.h);this.state.surprise=Math.max(0,this.state.surprise-.02)}this.entities.particles.forEach(p=>{p.y+=p.v*.2;if(p.y>this.h)p.y=0;c.fillStyle=this.level.theme.particle;c.fillRect(p.x,p.y,1,1)});this.entities.gradients.forEach(g=>{const q=c.createRadialGradient(g.x,g.y,6,g.x,g.y,g.r);q.addColorStop(0,g.type==='nutrient'?'rgba(130,220,170,.24)':'rgba(230,90,80,.24)');q.addColorStop(1,'rgba(0,0,0,0)');c.fillStyle=q;c.beginPath();c.arc(g.x,g.y,g.r,0,Math.PI*2);c.fill()});this.entities.pain.forEach(p=>{c.fillStyle='rgba(255,110,90,.2)';c.beginPath();c.arc(p.x,p.y,p.r,0,Math.PI*2);c.fill()});c.fillStyle=this.level.theme.nutrient;this.entities.nutrients.forEach(n=>c.fillRect(n.x,n.y,2,2));c.fillStyle=this.level.theme.hazard;this.entities.hazards.forEach(h=>{c.beginPath();c.arc(h.x,h.y,h.r,0,Math.PI*2);c.fill()});if(this.state.scan>0&&this.entities.nutrients[0]){const n=this.entities.nutrients[0];c.strokeStyle='rgba(160,220,255,.8)';c.beginPath();c.moveTo(this.player.x,this.player.y);c.lineTo(n.x,n.y);c.stroke()}if(this.state.shield){c.strokeStyle='rgba(220,220,255,.8)';c.beginPath();c.arc(this.player.x,this.player.y,14,0,Math.PI*2);c.stroke()}SpriteLibrary[this.level.organism]?.(c,this.player,this.state.t,this.state);$('#timerLabel').textContent=`t=${this.state.t.toFixed(1)}s`;const bars=[{label:'Order',v:this.state.order,c:'#d7d0ba'},{label:'Energy',v:this.state.energy,c:'#88c9a7'}];if(this.level.ui.valence)bars.unshift({label:'Valence',v:this.state.valence,c:'linear-gradient(90deg,#5e6ea6,#e3b072)'});this.ui.setBars(bars)}
+complete(){this.running=false;if(!this.progress.completed.includes(this.level.id))this.progress.completed.push(this.level.id);this.progress.currentLevel=Math.max(this.progress.currentLevel,this.level.id+1);this.progress.save();showTransition(this.level)}
+loop=(ts)=>{if(!this.running)return;const dt=Math.min(.033,(ts-this.last)/1000||.016);this.last=ts;this.update(dt);this.draw();requestAnimationFrame(this.loop)}
+start(id){this.levelManager.load(id);this.running=true;this.last=performance.now();requestAnimationFrame(this.loop)}
+}
+
+const engine=new GameEngine($('#gameCanvas'));
+let introIdx=0;const renderIntro=()=>{$('#introText').textContent=INTRO_PARAGRAPHS[introIdx];$('#nextIntroBtn').textContent=introIdx<INTRO_PARAGRAPHS.length-1?'Next Thought':'Restart Intro'};
+$('#beginBtn').onclick=()=>{show('introScreen');introIdx=0;renderIntro()};
+$('#nextIntroBtn').onclick=()=>{introIdx=(introIdx+1)%INTRO_PARAGRAPHS.length;renderIntro()};
+$('#scienceBtn').onclick=()=>{const d=$('#science');d.style.display=d.style.display==='none'?'block':'none';d.innerHTML='<h3>Primer</h3><p><strong>Free energy and boundaries:</strong> living systems persist by minimizing surprise at the boundary between self and world.</p><p><strong>Feeling and consciousness:</strong> when automatic regulation fails, affect emerges as a call to action.</p><p><strong>Primary drives:</strong> SEEKING, FEAR, RAGE, LUST, CARE, PANIC/GRIEF, and PLAY organize survival and social life.</p>'};
+$('#startBtn').onclick=()=>zoomTransition(()=>{show('gameScreen');engine.start(1)});
+$('#skipLevelBtn').onclick=()=>engine.skipToNextLevel();
+
+function renderTimeline(current){const t=$('#timeline');t.innerHTML='';GRAND_SCHEME.forEach(n=>{const d=document.createElement('div');d.className=`node ${n.status} ${current===n.id?'current':''}`;d.innerHTML=`<strong>${n.id}. ${n.name}</strong><br>${n.era}<br>${n.concept}<br><em>${n.drive||'—'}</em>`;t.appendChild(d)})}
+function showTransition(level){show('transitionScreen');$('#transitionTitle').textContent=`${level.name} Complete`;$('#bridge').textContent=level.philosophicalBridge;$('#deeper').style.display='none';$('#schemeWrap').style.display='none';$('#deeperBtn').onclick=()=>{const d=$('#deeper');d.style.display=d.style.display==='none'?'block':'none';d.innerHTML=`<h3>${level.coreConceptFull.concept}</h3><p>${level.coreConceptFull.explanation.replace(/\n\n/g,'</p><p>')}</p><blockquote>${level.coreConceptFull.keyInsight}</blockquote>`};$('#schemeBtn').onclick=()=>{const w=$('#schemeWrap');w.style.display=w.style.display==='none'?'block':'none';renderTimeline(level.id+1)};$('#continueBtn').onclick=()=>{const next=level.id+1;if(next<=4)zoomTransition(()=>{show('gameScreen');engine.start(next)});else show('titleScreen')}}

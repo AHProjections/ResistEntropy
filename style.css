@@ -1,0 +1,23 @@
+:root{--bg:#06070c;--fg:#ece6d7;--muted:#9a9387;--line:rgba(255,255,255,.2);--panel:rgba(8,10,16,.82)}
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace}
+.screen{position:fixed;inset:0;display:none;align-items:center;justify-content:center}.screen.active{display:flex}
+.panel{width:min(1080px,92vw);max-height:90vh;overflow:auto;border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:28px;backdrop-filter:blur(8px)}
+h1,h2,h3{font-family:'Playfair Display',serif;margin:0 0 12px} h1{font-size:clamp(2.3rem,8vw,5rem);letter-spacing:.1em;text-align:center}
+.subtitle{text-align:center;color:var(--muted);margin-bottom:20px}.btn-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:16px}
+button{font:inherit;color:var(--fg);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:10px 16px;cursor:pointer}
+button:hover{background:rgba(255,255,255,.1)}
+#introText{white-space:pre-line;line-height:1.75;font-size:1.06rem;font-family:'Playfair Display',serif;animation:fadeIn .45s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#gameCanvas{width:100vw;height:100vh;display:block}.hud{position:fixed;inset:0;pointer-events:none}
+#hudTop{position:absolute;left:10px;right:10px;top:10px;display:flex;justify-content:space-between;font-size:12px}
+#bars{position:absolute;left:16px;bottom:16px;width:min(620px,90vw);display:grid;gap:8px}
+.bar-wrap{height:14px;border-radius:999px;overflow:hidden;border:1px solid var(--line);background:rgba(255,255,255,.08)}.bar{height:100%}
+#narrator{position:absolute;left:16px;bottom:90px;max-width:min(680px,90vw);border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.5);padding:12px;font-family:'Playfair Display',serif}
+#objectiveBox,#controlsBox,#roster,#brainstem{position:absolute;right:16px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.55);padding:10px;display:none;pointer-events:auto}
+#objectiveBox{top:52px;width:280px} #controlsBox{top:152px;width:280px} #roster{bottom:16px;width:240px}
+#brainstem{top:250px;width:150px;height:88px} #brainstemGlow{width:100%;height:58px;border-radius:8px;opacity:.1;background:radial-gradient(circle,rgba(255,160,110,.85),rgba(60,20,20,.12));transition:opacity .12s}
+#skipLevelBtn{position:absolute;top:12px;right:16px;pointer-events:auto;z-index:2;font-size:12px;padding:8px 12px}
+.cell-btn{width:100%;text-align:left;font-size:12px;margin-bottom:6px}
+#zoomOverlay{position:fixed;inset:0;background:#fff;pointer-events:none;opacity:0;transition:opacity .35s ease}
+#timeline{display:flex;gap:12px;overflow-x:auto;padding:4px 2px}.node{min-width:190px;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px}
+.playable{border-color:#95abff}.coming_soon{opacity:.56}.current{box-shadow:0 0 0 2px rgba(255,255,255,.2) inset}
